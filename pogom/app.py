@@ -34,14 +34,8 @@ class Pogom(Flask):
     def set_search_control(self, control):
         self.search_control = control
 
-    def set_location_queue(self, queue):
-        self.location_queue = queue
-
-    def set_current_location(self, location):
-        self.current_location = location
-
     def get_search_control(self):
-        return jsonify({'status': not self.search_control.is_set()})
+        return jsonify({'status': self.search_control.is_set()})
 
     def post_search_control(self):
         args = get_args()
@@ -49,10 +43,10 @@ class Pogom(Flask):
             return 'Search control is disabled', 403
         action = request.args.get('action','none')
         if action == 'on':
-            self.search_control.clear()
+            self.search_control.set()
             log.info('Search thread resumed')
         elif action == 'off':
-            self.search_control.set()
+            self.search_control.clear()
             log.info('Search thread paused')
         else:
             return jsonify({'message':'invalid use of api'})
@@ -64,8 +58,8 @@ class Pogom(Flask):
         search_display = "inline" if args.search_control else "none"
 
         return render_template('map.html',
-                               lat=self.current_location[0],
-                               lng=self.current_location[1],
+                               lat=config['ORIGINAL_LATITUDE'],
+                               lng=config['ORIGINAL_LONGITUDE'],
                                gmaps_key=config['GMAPS_KEY'],
                                lang=config['LOCALE'],
                                is_fixed=fixed_display,
@@ -100,15 +94,15 @@ class Pogom(Flask):
 
     def loc(self):
         d = {}
-        d['lat'] = self.current_location[0]
-        d['lng'] = self.current_location[1]
+        d['lat'] = config['ORIGINAL_LATITUDE']
+        d['lng'] = config['ORIGINAL_LONGITUDE']
 
         return jsonify(d)
 
     def next_loc(self):
         args = get_args()
         if args.fixed_location:
-            return 'Location changes are turned off', 403
+            return 'Location searching is turned off', 403
         # part of query string
         if request.args:
             lat = request.args.get('lat', type=float)
@@ -122,7 +116,7 @@ class Pogom(Flask):
             log.warning('Invalid next location: %s,%s', lat, lon)
             return 'bad parameters', 400
         else:
-            self.location_queue.put((lat, lon, 0))
+            config['NEXT_LOCATION'] = {'lat': lat, 'lon': lon}
             log.info('Changing next location: %s,%s', lat, lon)
             return 'ok'
 
@@ -132,8 +126,8 @@ class Pogom(Flask):
         pokemon_list = []
 
         # Allow client to specify location
-        lat = request.args.get('lat', self.current_location[0], type=float)
-        lon = request.args.get('lon', self.current_location[1], type=float)
+        lat = request.args.get('lat', config['ORIGINAL_LATITUDE'], type=float)
+        lon = request.args.get('lon', config['ORIGINAL_LONGITUDE'], type=float)
         origin_point = LatLng.from_degrees(lat, lon)
 
         for pokemon in Pokemon.get_active(None, None, None, None):
